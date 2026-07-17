@@ -1,0 +1,35 @@
+# Machine Expert temporary files
+*.~u
+*.tmp
+*~
+*.bak
+*.precompilecache
+
+# Compiled output
+*.compiled
+*.bin
+*.map
+
+# User settings (private)
+*.user
+*.suo
+*-AllUsers.opt
+*.opt
+
+# Simulation files
+*.sim
+*.simulation
+*.bootinfo
+*_guids
+*.compileinfo
+
+# Build artifacts
+*.log
+*.err
+
+# Recovered files
+*RECOVERED*
+
+# OS generated files
+Thumbs.db
+Desktop.ini
