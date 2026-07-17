@@ -7,6 +7,7 @@
 - **控制器**: Schneider TM241C24R（仅仿真，未接真机）
 - **开发环境**: EcoStruxure Machine Expert Logic Builder V2.6
 - **编程语言**: 梯形图 (LD) / 结构化文本 (ST)
+- **软件内核**: 基于 Codesys 内核（IEC 61131-3 标准）
 
 ## 已完成练习
 
@@ -30,78 +31,142 @@
   - TON 定时器每步切换时先断开 IN 实现 ET 清零后重新计时
   - 启保停 + 步序驱动 + 定时器驱动 + 输出赋值
 
-## 核心代码：自动循环控制（ST）
+### 功能块封装（阶段二）
+- **FB_AutoCycle DFB**：将自动循环控制封装为可复用功能块
+  - 接口设计：VAR_INPUT（iStart, iStop, tFwdTime, tRevTime, tPauseTime）+ VAR_OUTPUT（qFwd, qRev, qRunning）
+  - 黑盒封装：内部变量（iStep, tStep）对外不可见
+  - 实战级安全保护：
+    - 启动前输出清零
+    - 非法步序保护（CASE ELSE 分支）
+    - 软件互锁（qFwd AND qRev 同时为 TRUE 时停机）
+  - 主程序通过管脚赋值调用（:= 输入，=> 输出）
 
-```
-// 步序状态机自动循环控制
-// iStep: 0=停止, 1=正转, 2=暂停, 3=反转, 4=暂停
+## 核心代码：FB_AutoCycle DFB（ST）
 
-IF iStart THEN
-    iStep := 1;
-    tReset := TRUE;  // 定时器复位标志
-ELSIF iStop THEN
-    iStep := 0;
+```st
+FUNCTION_BLOCK FB_AutoCycle
+
+VAR_INPUT
+    iStart       : BOOL;     (* 启动按钮 *)
+    iStop        : BOOL;     (* 停止按钮 *)
+    tFwdTime     : TIME;     (* 正转持续时间 *)
+    tRevTime     : TIME;     (* 反转持续时间 *)
+    tPauseTime   : TIME;     (* 步间暂停时间 *)
+END_VAR
+
+VAR_OUTPUT
+    qFwd         : BOOL;     (* 正转输出 *)
+    qRev         : BOOL;     (* 反转输出 *)
+    qRunning     : BOOL;     (* 运行中标志 *)
+END_VAR
+
+VAR
+    iStep        : INT;      (* 步序: 0=停止, 1=正转, 2=暂停, 3=反转, 4=暂停 *)
+    tStep        : TON;      (* 步序定时器 *)
+END_VAR
+
+(* 启保停控制 *)
+IF iStart AND NOT iStop THEN
+    qRunning := TRUE;
+    IF iStep = 0 THEN
+        qFwd := FALSE;
+        qRev := FALSE;
+        iStep := 1;
+    END_IF;
+END_IF;
+
+IF iStop THEN
+    qRunning := FALSE;
     qFwd := FALSE;
     qRev := FALSE;
-    tReset := FALSE;
+    iStep := 0;
+    tStep(IN := FALSE);
 END_IF;
 
-// 步序切换驱动
-CASE iStep OF
-    1:  // 正转 5s
-        qFwd := TRUE;
-        qRev := FALSE;
-        tStep(IN := TRUE, PT := tFwdTime);
-        IF tStep.Q THEN
-            tReset := FALSE;  // 先断开 IN
-            iStep := 2;
-        END_IF
-    2:  // 暂停 2s
-        qFwd := FALSE;
-        qRev := FALSE;
-        tStep(IN := TRUE, PT := tPauseTime);
-        IF tStep.Q THEN
-            tReset := FALSE;
-            iStep := 3;
-        END_IF
-    3:  // 反转 5s
-        qFwd := FALSE;
-        qRev := TRUE;
-        tStep(IN := TRUE, PT := tRevTime);
-        IF tStep.Q THEN
-            tReset := FALSE;
-            iStep := 4;
-        END_IF
-    4:  // 暂停 2s
-        qFwd := FALSE;
-        qRev := FALSE;
-        tStep(IN := TRUE, PT := tPauseTime);
-        IF tStep.Q THEN
-            tReset := FALSE;
-            iStep := 1;  // 循环
-        END_IF
-END_CASE;
+(* 步序状态机 *)
+IF qRunning THEN
+    CASE iStep OF
+        1:  (* 正转 *)
+            qFwd := TRUE;
+            qRev := FALSE;
+            tStep(IN := TRUE, PT := tFwdTime);
+            IF tStep.Q THEN
+                iStep := 2;
+                tStep(IN := FALSE);
+            END_IF
 
-// 定时器复位逻辑：步序切换时先断开 IN，清零 ET 后重新计时
-IF NOT tReset AND tStep.ET = 0 THEN
-    tReset := TRUE;
+        2:  (* 暂停1 *)
+            qFwd := FALSE;
+            qRev := FALSE;
+            tStep(IN := TRUE, PT := tPauseTime);
+            IF tStep.Q THEN
+                iStep := 3;
+                tStep(IN := FALSE);
+            END_IF
+
+        3:  (* 反转 *)
+            qFwd := FALSE;
+            qRev := TRUE;
+            tStep(IN := TRUE, PT := tRevTime);
+            IF tStep.Q THEN
+                iStep := 4;
+                tStep(IN := FALSE);
+            END_IF
+
+        4:  (* 暂停2 *)
+            qFwd := FALSE;
+            qRev := FALSE;
+            tStep(IN := TRUE, PT := tPauseTime);
+            IF tStep.Q THEN
+                iStep := 1;
+                tStep(IN := FALSE);
+            END_IF
+
+        ELSE  (* 非法步序保护 *)
+            qFwd := FALSE;
+            qRev := FALSE;
+            qRunning := FALSE;
+            iStep := 0;
+            tStep(IN := FALSE);
+    END_CASE;
 END_IF;
+
+(* 软件互锁：绝不允许正反转同时输出 *)
+IF qFwd AND qRev THEN
+    qFwd := FALSE;
+    qRev := FALSE;
+    qRunning := FALSE;
+    iStep := 0;
+    tStep(IN := FALSE);
+END_IF;
+
+END_FUNCTION_BLOCK
 ```
 
-## 变量定义
+## DFB 调用方式（主程序）
 
-| 变量名 | 类型 | 说明 |
-|--------|------|------|
-| iStart | BOOL | 启动按钮 |
-| iStop | BOOL | 停止按钮 |
-| qFwd | BOOL | 正转输出 |
-| qRev | BOOL | 反转输出 |
-| iStep | INT | 步序状态（0-4） |
-| tStep | TON | 步序定时器 |
-| tFwdTime | TIME := T#5S | 正转时间 |
-| tRevTime | TIME := T#5S | 反转时间 |
-| tPauseTime | TIME := T#2S | 暂停时间 |
-| tReset | BOOL | 定时器复位标志 |
+```st
+PROGRAM Automatic_Cycle_Control
+VAR
+    fbCycle : FB_AutoCycle;     (* DFB 实例 *)
+    bStart  : BOOL;             (* 模拟启动按钮 *)
+    bStop   : BOOL;             (* 模拟停止按钮 *)
+    bFwd    : BOOL;             (* 正转输出 *)
+    bRev    : BOOL;             (* 反转输出 *)
+    bRun    : BOOL;             (* 运行标志 *)
+END_VAR
+
+fbCycle(
+    iStart     := bStart,
+    iStop      := bStop,
+    tFwdTime   := T#5S,
+    tRevTime   := T#5S,
+    tPauseTime := T#2S,
+    qFwd       => bFwd,
+    qRev       => bRev,
+    qRunning   => bRun
+);
+```
 
 ## 文件说明
 - `MyFirstProject.project`: Machine Expert 主项目文件（二进制格式，需安装 Machine Expert 打开）
@@ -109,7 +174,7 @@ END_IF;
 
 ## 学习路线
 - ✅ 阶段一：基础指令（启保停、互锁、定时器、计数器、比较、边沿、置复位、状态机）
-- ⬜ 阶段二：功能块封装(DFB) → I/O 地址绑定 → 交通灯经典练习
+- 🔄 阶段二：功能块封装(DFB) ✅ → I/O 地址绑定 → 交通灯经典练习
 - ⬜ 阶段三：通信协议(Modbus/OPC UA) → HMI 触摸屏 → 变频器控制
 
 ## 更新日志
@@ -119,3 +184,4 @@ END_IF;
 - 2026-07-06: 添加单按钮启停练习
 - 2026-07-14: 完成 MOVE 指令 + 步序状态机自动循环控制（ST 语言），含 TON 复位逻辑修复
 - 2026-07-17: 更新 README.md，整理所有已完成练习文档
+- 2026-07-17: 完成 FB_AutoCycle DFB 功能块封装，含实战级互锁保护（启动清零+非法步序+软件互锁）
