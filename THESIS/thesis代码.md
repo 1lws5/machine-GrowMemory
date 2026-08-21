@@ -19,6 +19,7 @@
 ## 1. GVL（全局变量表）
 
 ```iecst
+{attribute 'qualified_only'}
 VAR_GLOBAL
     // ===== 输入变量 =====
     iStart     AT %IX0.0 : BOOL;   // 常开的启动按钮
