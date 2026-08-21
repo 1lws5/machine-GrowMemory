@@ -248,6 +248,9 @@ END_IF;
 
 ## 5. PLC_PRG（主程序）
 
+> PLC_PRG 是**编排层（Orchestration）**：职责只有三件事——实例化功能块、给管脚接线、搬运数据。
+> 业务逻辑全在功能块里，主程序一行业务逻辑（IF/CASE/计时器）都不写。
+
 ```iecst
 PROGRAM PLC_PRG
 VAR
@@ -255,37 +258,39 @@ VAR
     fbSort  : FB_Sorter;
 END_VAR
 
+// ===== PLC_PRG：编排层，只做"造实例 + 接线 + 搬运数据" =====
+
 // 调用传送带控制
 fbBelt(
-    iStart := GVL.iStart,
-    iStop  := GVL.iStop,
-    iPause := fbSort.bPause
+    iStart := GVL.iStart,          // 绑定物理输入（启动按钮）
+    iStop  := GVL.iStop,           // 绑定物理输入（停止按钮）
+    iPause := fbSort.bPause        // 分拣时 fbSort 输出的暂停信号，让传送带停下等推杆动作
 );
 
-// 传送带输出写到 GVL
-GVL.qBelt     := fbBelt.qBelt;
-GVL.qRunLight := fbBelt.qRunLight;
+// 传送带输出 → 绑定物理输出
+GVL.qBelt     := fbBelt.qBelt;     // 传送带电机
+GVL.qRunLight := fbBelt.qRunLight; // 运行指示灯
 
 // 调用分拣逻辑
 fbSort(
-    iDetect     := GVL.iDetect,
-    iColorCode  := GVL.iColorCode,
-    bRunning    := fbBelt.bRunning,
-    bAlarmReset := GVL.bAlarmReset,
-    bCntReset   := GVL.bCntReset
+    iDetect     := GVL.iDetect,      // 绑定物理输入（到位传感器）
+    iColorCode  := GVL.iColorCode,   // 绑定物理输入（颜色传感器）
+    bRunning    := fbBelt.bRunning,  // 读取传送带运行状态
+    bAlarmReset := GVL.bAlarmReset,  // 无IO绑定，HMI操作，报警复位信号
+    bCntReset   := GVL.bCntReset     // 无IO绑定，HMI操作，计数复位信号
 );
 
-// 推杆输出写到 GVL
-GVL.qPushA      := fbSort.qPushA;
-GVL.qPushB      := fbSort.qPushB;
-GVL.qPushC      := fbSort.qPushC;
-GVL.qAlarmLight := fbSort.qAlarmLight;
+// 推杆输出 → 绑定物理输出
+GVL.qPushA      := fbSort.qPushA;      // 推杆A
+GVL.qPushB      := fbSort.qPushB;      // 推杆B
+GVL.qPushC      := fbSort.qPushC;      // 推杆C
+GVL.qAlarmLight := fbSort.qAlarmLight; // 报警指示灯
 
-// 计数写到 GVL
-GVL.wCountRed   := fbSort.wCountRed;
-GVL.wCountBlue  := fbSort.wCountBlue;
-GVL.wCountGreen := fbSort.wCountGreen;
-GVL.wCountTotal := fbSort.wCountTotal;
+// 计数 → 供 HMI 显示
+GVL.wCountRed   := fbSort.wCountRed;   // 红色计数
+GVL.wCountBlue  := fbSort.wCountBlue;  // 蓝色计数
+GVL.wCountGreen := fbSort.wCountGreen; // 绿色计数
+GVL.wCountTotal := fbSort.wCountTotal; // 总计数
 ```
 
 ---
