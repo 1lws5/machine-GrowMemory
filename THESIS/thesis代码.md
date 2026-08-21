@@ -19,29 +19,29 @@
 ## 1. GVL（全局变量表）
 
 ```iecst
-{attribute 'qualified_only'}
 VAR_GLOBAL
-    // ===== 物理输入（AT 绑定，接真实硬件）=====
-    iStart      AT %IX0.0 : BOOL;   // 启动按钮（常开）
-    iStop       AT %IX0.1 : BOOL;   // 停止按钮（常闭，真实接线时取反）
-    iDetect     AT %IX0.2 : BOOL;   // 到位传感器
-    iColorCode  AT %IW2   : INT;    // 颜色代码 1=红 2=蓝 3=绿 0=未识别
+    // ===== 输入变量 =====
+    iStart     AT %IX0.0 : BOOL;   // 常开的启动按钮
+    iStop      AT %IX0.1 : BOOL;   // 常闭的停止按钮
+    iDetect    AT %IX0.2 : BOOL;   // 物品到位检测传感器
+    iColorCode AT %IW2   : INT;    // 颜色传感器代码（0/1/2/3）
 
-    // ===== 物理输出（AT 绑定，接真实硬件）=====
-    qBelt       AT %QX0.0 : BOOL;   // 传送带电机
-    qPushA      AT %QX0.1 : BOOL;   // 推杆A（红色）
-    qPushB      AT %QX0.2 : BOOL;   // 推杆B（蓝色）
-    qPushC      AT %QX0.3 : BOOL;   // 推杆C（绿色）
-    qRunLight   AT %QX0.4 : BOOL;   // 运行指示灯
-    qAlarmLight AT %QX0.5 : BOOL;   // 报警灯
+    // ===== 输出变量 =====
+    qBelt       AT %QX0.0 : BOOL;  // 传送带电机
+    qPushA      AT %QX0.1 : BOOL;  // 推杆A，推红色物体
+    qPushB      AT %QX0.2 : BOOL;  // 推杆B，推蓝色物体
+    qPushC      AT %QX0.3 : BOOL;  // 推杆C，推绿色物体
+    qRunLight   AT %QX0.4 : BOOL;  // 运行指示灯
+    qAlarmLight AT %QX0.5 : BOOL;  // 报警指示灯
 
-    // ===== 内部变量（仿真用，无 AT 绑定）=====
-    bAlarmReset : BOOL;             // 报警复位按钮
-    bCntReset   : BOOL;             // 计数复位按钮
-    wCountRed   : INT;              // 红色计数
-    wCountBlue  : INT;              // 蓝色计数
-    wCountGreen : INT;              // 绿色计数
-    wCountTotal : INT;              // 总计数
+    // ===== 内部变量 =====
+    iStep       : INT := 0;        // 状态机步序
+    wCountRed   : INT := 0;        // 红色计数
+    wCountBlue  : INT := 0;        // 蓝色计数
+    wCountGreen : INT := 0;        // 绿色计数
+    wCountTotal : INT := 0;        // 总计数
+    bAlarmReset : BOOL;            // 报警复位
+    bCntReset   : BOOL;            // 计数复位
 END_VAR
 ```
 
@@ -94,58 +94,59 @@ CASE iStep OF
             bDone := TRUE;
         END_IF;
 END_CASE;
-
-// TON 在状态机里，每个状态都要显式喂 IN：
-//   正在计时的传 IN:=TRUE，不用的传 IN:=FALSE。
-//   绝不能"不调用"让它靠粘性值，否则 Q 和 ET 残留导致误触发。
-
-// 实际项目应采用两个传感器判断推杆位置：
-//   推到底 → 推杆传感器变 TRUE，保持一会儿后开始收回；
-//   收回到位 → 归位传感器变 TRUE，即可进行下一次推杆。
 ```
+
+> 关键点：TON 在状态机里每个状态都要显式喂 IN——正在计时的传 `IN:=TRUE`，不用的传 `IN:=FALSE`，绝不能"不调用"靠粘性值，否则 Q 和 ET 残留导致误触发。
+>
+> 进阶：实际项目应采用两个传感器判断推杆位置——推到底传感器变 TRUE 后保持一会儿再收回；归位传感器变 TRUE 才允许下一次推杆，避免纯延时猜测导致的机械误差。
 
 ---
 
 ## 3. FB_BeltControl（传送带控制功能块）
 
 ```iecst
-FUNCTION_BLOCK FB_BeltControl   // 传送带启保停 + 暂停
+FUNCTION_BLOCK FB_BeltControl   // 用于传送带的控制和逻辑判断
 VAR_INPUT
-    iStart    : BOOL;     // 启动按钮
-    iStop     : BOOL;     // 停止按钮
-    iPause    : BOOL;     // 暂停信号（来自分拣）
+    iStart    : BOOL;     // 启动
+    iStop     : BOOL;     // 停止
+    iPause    : BOOL;     // 暂停（分拣时暂停）
 END_VAR
 VAR_OUTPUT
-    qBelt     : BOOL;     // 传送带电机
-    qRunLight : BOOL;     // 运行灯
-    bRunning  : BOOL;     // 运行状态（供分拣判断）
+    qBelt     : BOOL;     // 传送带输出
+    qRunLight : BOOL;     // 运行指示灯
+    bRunning  : BOOL;     // 运行状态
 END_VAR
 VAR
-    bRunState : BOOL;     // 运行状态记忆
-    rTrigStart: R_TRIG;   // 启动上升沿
-    rTrigStop : R_TRIG;   // 停止上升沿
+    tRun      : TON;      // 运行时间累计
+    tTotal    : TIME;     // 总运行时间
 END_VAR
 
-// 启动上升沿
-rTrigStart(CLK := iStart);
-IF rTrigStart.Q THEN
-    bRunState := TRUE;
+// 启保停逻辑（带暂停）
+// iStop 优先级最高，整机停机
+IF iStop THEN
+    qBelt     := FALSE;   // 全部停掉
+    qRunLight := FALSE;
+    bRunning  := FALSE;
+ELSIF iStart THEN
+    bRunning := TRUE;     // 启动，置位整机运行标记
 END_IF;
 
-// 停止上升沿
-rTrigStop(CLK := iStop);
-IF rTrigStop.Q THEN
-    bRunState := FALSE;
+// 在整机运行 bRunning=TRUE 前提下，受 iPause 控制传送带输出
+IF bRunning THEN
+    IF iPause THEN
+        qBelt     := FALSE;   // 分拣暂停，传送带停
+        qRunLight := TRUE;    // 灯依然亮，代表开机待命，不是关机
+    ELSE
+        qBelt     := TRUE;    // 传送带照常运行
+        qRunLight := TRUE;    // 运行指示灯亮
+    END_IF;
+ELSE
+    qBelt     := FALSE;       // 传送带停止
+    qRunLight := FALSE;       // 指示灯不亮
 END_IF;
-
-// 运行状态 AND NOT 暂停
-qBelt     := bRunState AND NOT iPause;
-qRunLight := bRunState AND NOT iPause;
-bRunning  := bRunState AND NOT iPause;
 ```
 
-> 设计说明：`bRunState` 记忆运行状态，启动置 TRUE、停止置 FALSE。  
-> 暂停只影响输出，不改 bRunState——所以暂停解除后自动恢复运行，不用重新按启动。
+> 设计说明：`bRunning` 记忆"开机运行"状态，启动置 TRUE、停止置 FALSE；暂停只影响 `qBelt`，不改 `bRunning`——所以暂停解除后自动恢复运行，不用重按启动。暂停时 `qRunLight` 保持亮，表示"开机待命"，与停机（灯灭）区分。
 
 ---
 
@@ -234,17 +235,17 @@ ELSE
     bDoneLatch := FALSE;    // 清锁存：但凡有一个还在工作，就是没完成
 END_IF;
 
-// 用 R_TRIG 显式生成 bSortDone 单周期脉冲
+// ===== 5. 用 R_TRIG 显式生成 bSortDone 单周期脉冲 =====
 rDone(CLK := bDoneLatch);
 bSortDone := rDone.Q;
 
-// 报警复位（上升沿触发）
+// ===== 6. 报警复位（上升沿触发）=====
 rTrigReset(CLK := bAlarmReset);
 IF rTrigReset.Q THEN
     qAlarmLight := FALSE;
 END_IF;
 
-// 计数复位（上升沿触发）
+// ===== 7. 计数复位（上升沿触发）=====
 rTrigCntRst(CLK := bCntReset);
 IF rTrigCntRst.Q THEN
     wCountRed := 0; wCountBlue := 0;
@@ -262,17 +263,15 @@ END_IF;
 ```iecst
 PROGRAM PLC_PRG
 VAR
-    fbBelt  : FB_BeltControl;
-    fbSort  : FB_Sorter;
+    fbBelt  : FB_BeltControl;   // 实例化 FB_BeltControl 块
+    fbSort  : FB_Sorter;        // 实例化 FB_Sorter 块
 END_VAR
-
-// ===== PLC_PRG：编排层，只做"造实例 + 接线 + 搬运数据" =====
 
 // 调用传送带控制
 fbBelt(
-    iStart := GVL.iStart,          // 绑定物理输入（启动按钮）
-    iStop  := GVL.iStop,           // 绑定物理输入（停止按钮）
-    iPause := fbSort.bPause        // 分拣时 fbSort 输出的暂停信号，让传送带停下等推杆动作
+    iStart := GVL.iStart,       // 绑定物理输入（启动按钮）
+    iStop  := GVL.iStop,        // 绑定物理输入（停止按钮）
+    iPause := fbSort.bPause     // 分拣时 fbSort 输出的暂停信号，让传送带停下等推杆动作
 );
 
 // 传送带输出 → 绑定物理输出
@@ -309,6 +308,6 @@ GVL.wCountTotal := fbSort.wCountTotal; // 总计数
 2. **状态机里定时器要显式喂 IN**：正在计时的传 `IN:=TRUE`，不用的传 `IN:=FALSE`，不能靠"不调用"粘性值。
 3. **CASE 状态机**：单个整数 `iStep` 表达多状态，比多个布尔标志更清晰、更不易出 bug。
 4. **`AT` 地址绑定**：物理 I/O 用 `AT %IX/%QX` 绑定；内部变量（复位、计数）不绑定，仿真靠监视窗口强制。
-5. **`{attribute 'qualified_only'}`**：全局变量必须用 `GVL.xxx` 限定名访问，避免重名冲突。
+5. **触发 vs 输出分离**：`bTrigger`（指令）与 `qPush`（状态）是两码事，避免时序错乱。
 
 详细调试步骤见《thesis调试文档.md》。
