@@ -161,9 +161,9 @@ VAR_INPUT
     bCntReset  : BOOL;     // 计数复位按钮
 END_VAR
 VAR_OUTPUT
-    qPushA     : BOOL;     // 推杆A触发
-    qPushB     : BOOL;     // 推杆B触发
-    qPushC     : BOOL;     // 推杆C触发
+    qPushA     : BOOL;     // A杆气缸驱动（推杆真实状态：伸出TRUE/回位FALSE）
+    qPushB     : BOOL;     // B杆气缸驱动
+    qPushC     : BOOL;     // C杆气缸驱动
     qAlarmLight: BOOL;     // 报警灯
     wCountRed  : INT;      // 红色计数
     wCountBlue : INT;      // 蓝色计数
@@ -180,26 +180,29 @@ VAR
     fbPushA    : FB_Pusher; // 推杆A实例
     fbPushB    : FB_Pusher; // 推杆B实例
     fbPushC    : FB_Pusher; // 推杆C实例
+    bTriggerA  : BOOL;     // 触发A（内部触发信号，喂给 fbPushA.bTrigger）
+    bTriggerB  : BOOL;     // 触发B
+    bTriggerC  : BOOL;     // 触发C
     bSorting   : BOOL;     // 正在分拣（锁存标记）
     bDoneLatch : BOOL;     // 完成锁存（生成脉冲用）
 END_VAR
 
-// 到位传感器上升沿检测
+// ===== 1. 到位传感器上升沿检测 =====
 rTrigDetect(CLK := iDetect);
 IF rTrigDetect.Q AND bRunning AND NOT bSorting THEN
     bSorting := TRUE;   // 锁住判断，防止二次触发
-    bPause := TRUE;     // 暂停传送带，开始分拣
+    bPause   := TRUE;   // 暂停传送带，开始分拣
 
-    // 颜色分拣
+    // 颜色分拣：识别到颜色 → 置对应的内部触发信号
     CASE iColorCode OF
         1: // 红色
-            qPushA := TRUE;
+            bTriggerA := TRUE;
             wCountRed := wCountRed + 1;
         2: // 蓝色
-            qPushB := TRUE;
+            bTriggerB := TRUE;
             wCountBlue := wCountBlue + 1;
         3: // 绿色
-            qPushC := TRUE;
+            bTriggerC := TRUE;
             wCountGreen := wCountGreen + 1;
         ELSE // 未识别
             qAlarmLight := TRUE;  // 报警锁存：置位后保持，需人工复位解锁
@@ -207,20 +210,25 @@ IF rTrigDetect.Q AND bRunning AND NOT bSorting THEN
     wCountTotal := wCountTotal + 1;  // 不管推了啥，总计数+1
 END_IF;
 
-// 调用推杆功能块
-fbPushA(bTrigger := qPushA);
-fbPushB(bTrigger := qPushB);
-fbPushC(bTrigger := qPushC);
+// ===== 2. 调用推杆功能块：触发进输入，真实状态出输出 =====
+fbPushA(bTrigger := bTriggerA);
+fbPushB(bTrigger := bTriggerB);
+fbPushC(bTrigger := bTriggerC);
 
-// 推杆完成后清除触发
-IF fbPushA.bDone THEN qPushA := FALSE; END_IF;
-IF fbPushB.bDone THEN qPushB := FALSE; END_IF;
-IF fbPushC.bDone THEN qPushC := FALSE; END_IF;
+// 输出 = 推杆真实状态（伸出TRUE / 回位FALSE），不是触发标记
+qPushA := fbPushA.qPush;
+qPushB := fbPushB.qPush;
+qPushC := fbPushC.qPush;
 
-// 所有推杆回位后恢复传送带
-IF bSorting AND NOT qPushA AND NOT qPushB AND NOT qPushC AND NOT qAlarmLight THEN
+// ===== 3. 推杆完成后清触发 =====
+IF fbPushA.bDone THEN bTriggerA := FALSE; END_IF;
+IF fbPushB.bDone THEN bTriggerB := FALSE; END_IF;
+IF fbPushC.bDone THEN bTriggerC := FALSE; END_IF;
+
+// ===== 4. 所有推杆回位后恢复传送带 =====
+IF bSorting AND NOT bTriggerA AND NOT bTriggerB AND NOT bTriggerC AND NOT qAlarmLight THEN
     bSorting := FALSE;
-    bPause := FALSE;
+    bPause   := FALSE;
     bDoneLatch := TRUE;     // 置锁存
 ELSE
     bDoneLatch := FALSE;    // 清锁存：但凡有一个还在工作，就是没完成
