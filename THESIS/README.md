@@ -55,9 +55,6 @@ THESIS/
 ### 操作演示
 [▶ 观看 HMI 操作演示视频](hmi/hmi_demo.mp4)
 
-> 🖥️ **推荐：打开统一展示页** [index.html](hmi/index.html)——三页截图 + 视频集中展示，双击即可离线浏览，作为二次保险展示页。
-> 💾 视频已压缩到 3.4MB（原 35MB），GitHub 网页可直接在线播放；如需原始画质完整包，下载 [HMI_showcase.zip](hmi/HMI_showcase.zip)。
-
 ## I/O 点表
 
 | 变量名 | 类型 | 地址 | 方向 | 说明 |
