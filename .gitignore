@@ -33,3 +33,6 @@
 # OS generated files
 Thumbs.db
 Desktop.ini
+
+# Temp working dirs
+_tmp/
