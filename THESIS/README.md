@@ -55,6 +55,9 @@ THESIS/
 ### 操作演示
 [▶ 观看 HMI 操作演示视频](hmi/hmi_demo.mp4)
 
+> 💾 **一键下载全部素材（截图 + 视频打包）**：[HMI_showcase.zip](hmi/HMI_showcase.zip)
+> 说明：视频文件约 35MB，超过 GitHub 网页 10MB 预览上限，网页上点开只会下载、不能在线播。建议下载 zip 到本地解压观看。
+
 ## I/O 点表
 
 | 变量名 | 类型 | 地址 | 方向 | 说明 |
