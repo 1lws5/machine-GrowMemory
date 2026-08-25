@@ -55,8 +55,8 @@ THESIS/
 ### 操作演示
 [▶ 观看 HMI 操作演示视频](hmi/hmi_demo.mp4)
 
-> 💾 **一键下载全部素材（截图 + 视频打包）**：[HMI_showcase.zip](hmi/HMI_showcase.zip)
-> 说明：视频文件约 35MB，超过 GitHub 网页 10MB 预览上限，网页上点开只会下载、不能在线播。建议下载 zip 到本地解压观看。
+> 🖥️ **推荐：打开统一展示页** [index.html](hmi/index.html)——三页截图 + 视频集中展示，双击即可离线浏览，作为二次保险展示页。
+> 💾 视频已压缩到 3.4MB（原 35MB），GitHub 网页可直接在线播放；如需原始画质完整包，下载 [HMI_showcase.zip](hmi/HMI_showcase.zip)。
 
 ## I/O 点表
 
