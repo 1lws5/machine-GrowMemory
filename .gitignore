@@ -36,3 +36,6 @@ Desktop.ini
 
 # Temp working dirs
 _tmp/
+
+# Legacy showcase (superseded by README.md)
+THESIS/hmi/index.html
