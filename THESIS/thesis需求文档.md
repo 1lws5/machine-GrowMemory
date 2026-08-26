@@ -51,9 +51,22 @@
 - 报警页面：未识别报警、急停状态
 
 ## Modbus TCP 通信
-- 主站：Codesys PLC
-- 从站：模拟HMI/上位机
-- Holding Register 0-4：分拣总数、红/蓝/绿计数、运行状态
+- **主站（Client）**：上位机 / HMI（主动发起读，查询 PLC 数据）
+- **从站（Server）**：Codesys PLC（被动响应，把计数/状态数据挂到保持寄存器）
+- **协议**：Modbus TCP，端口 502，从站地址 Unit ID = 1
+- **寄存器映射（Holding Register，功能码 03 读）**：
+
+| 寄存器地址 | 偏移 | 映射变量 | 含义 |
+|-----------|------|----------|------|
+| 40001 | 0 | GVL.wCountTotal | 分拣总数 |
+| 40002 | 1 | GVL.wCountRed | 红色计数 |
+| 40003 | 2 | GVL.wCountBlue | 蓝色计数 |
+| 40004 | 3 | GVL.wCountGreen | 绿色计数 |
+| 40005 | 4 | GVL.wRunState | 运行状态（0=停 1=运行） |
+
+> 说明：Holding Register 为 16 位字，每个 INT 变量占 1 个寄存器。
+> GVL 开了 qualified_only，映射时变量需带 GVL. 前缀。
+> wRunState 需在 GVL 中新增 INT 变量（程序运行时写入 0/1）。
 
 ## 电气图
 - 主电路图：电机、接触器、热继电器
@@ -64,7 +77,7 @@
 ## 交付物清单
 1. PLC程序（Codesys项目文件）
 2. HMI界面（Web可视化）
-3. Modbus TCP通信（跑通截图）
+3. Modbus TCP通信（Python 主站脚本读寄存器，跑通截图）
 4. 电气原理图（.dwg）
 5. I/O点表 + BOM清单
 6. GitHub仓库
