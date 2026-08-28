@@ -43,6 +43,15 @@ VAR_GLOBAL
     wCountTotal : INT := 0;        // 总计数
     bAlarmReset : BOOL;            // 报警复位
     bCntReset   : BOOL;            // 计数复位
+
+    // ===== 仿真演示开关 =====
+    bSimMode : BOOL := TRUE;       // TRUE=自动演示工件；FALSE=真实输入
+
+    // ===== Modbus TCP 输出映射（PLC → 上位机读）=====
+    mbCountTotal AT %QW0 : INT;    // 分拣总数 → 输入寄存器 30001
+    mbCountRed   AT %QW1 : INT;    // 红色计数 → 输入寄存器 30002
+    mbCountBlue  AT %QW2 : INT;    // 蓝色计数 → 输入寄存器 30003
+    mbCountGreen AT %QW3 : INT;    // 绿色计数 → 输入寄存器 30004
 END_VAR
 ```
 
@@ -256,33 +265,94 @@ END_IF;
 
 ---
 
-## 5. PLC_PRG（主程序）
+## 5. FB_DemoFeeder（演示工件发生器，可选）
+
+仿真阶段没有真实传感器，手动强制 `iDetect`/`iColorCode` 很繁琐。加一个演示发生器，让项目自己跑起来，方便验证通信和 HMI。
+
+```iecst
+FUNCTION_BLOCK FB_DemoFeeder
+// 演示工件发生器：仿真模式下自动模拟"工件到位 + 循环换色"
+VAR_INPUT
+    bEnable  : BOOL;    // TRUE=启用自动演示
+END_VAR
+VAR_OUTPUT
+    bDetect  : BOOL;    // 模拟到位传感器（周期性脉冲）
+    iColor   : INT;     // 模拟颜色代码（1红/2蓝/3绿循环）
+END_VAR
+VAR
+    tOn      : TON;          // 到位阶段计时
+    tOff     : TON;          // 间隙阶段计时
+    bOn      : BOOL;         // 当前处于"到位"阶段
+    iColorIdx: INT := 0;     // 颜色循环索引 1..3
+END_VAR
+
+IF bEnable THEN
+    IF NOT bOn THEN
+        bDetect := FALSE;
+        tOn(IN := FALSE);
+        tOff(IN := TRUE, PT := T#5S);
+        IF tOff.Q THEN
+            iColorIdx := iColorIdx + 1;
+            IF iColorIdx > 3 THEN
+                iColorIdx := 1;
+            END_IF;
+            iColor  := iColorIdx;
+            bOn     := TRUE;
+        END_IF;
+    ELSE
+        bDetect := TRUE;
+        tOff(IN := FALSE);
+        tOn(IN := TRUE, PT := T#1S);
+        IF tOn.Q THEN
+            bOn := FALSE;
+        END_IF;
+    END_IF;
+ELSE
+    bDetect  := FALSE;
+    iColor   := 0;
+    bOn      := FALSE;
+    iColorIdx := 0;
+    tOn(IN := FALSE);
+    tOff(IN := FALSE);
+END_IF;
+```
+
+> 说明：节拍 = 到位 1 秒 + 间隙 5 秒 = 6 秒一个工件。想加快/放慢改 `PT := T#5S`。接真机时把 `GVL.bSimMode` 改 FALSE 即恢复物理输入。
+
+---
+
+## 6. PLC_PRG（主程序）
 
 > PLC_PRG 是**编排层（Orchestration）**：职责只有三件事——实例化功能块、给管脚接线、搬运数据。
 > 业务逻辑全在功能块里，主程序一行业务逻辑（IF/CASE/计时器）都不写。
+> 仿真模式下用 `SEL` 二选一切换真实输入 / 演示输入。
 
 ```iecst
 PROGRAM PLC_PRG
 VAR
     fbBelt  : FB_BeltControl;   // 实例化 FB_BeltControl 块
     fbSort  : FB_Sorter;        // 实例化 FB_Sorter 块
+    fbDemo  : FB_DemoFeeder;    // 实例化演示工件发生器（仿真用）
 END_VAR
 
-// 调用传送带控制
+// 演示工件发生器
+fbDemo(bEnable := GVL.bSimMode);
+
+// 调用传送带控制（仿真模式直接自动开机）
 fbBelt(
-    iStart := GVL.iStart,       // 绑定物理输入（启动按钮）
-    iStop  := GVL.iStop,        // 绑定物理输入（停止按钮）
-    iPause := fbSort.bPause     // 分拣时 fbSort 输出的暂停信号，让传送带停下等推杆动作
+    iStart := GVL.iStart OR GVL.bSimMode,
+    iStop  := GVL.iStop,
+    iPause := fbSort.bPause
 );
 
 // 传送带输出 → 绑定物理输出
 GVL.qBelt     := fbBelt.qBelt;     // 传送带电机
 GVL.qRunLight := fbBelt.qRunLight; // 运行指示灯
 
-// 调用分拣逻辑
+// 调用分拣逻辑（仿真/真实输入二选一）
 fbSort(
-    iDetect     := GVL.iDetect,      // 绑定物理输入（到位传感器）
-    iColorCode  := GVL.iColorCode,   // 绑定物理输入（颜色传感器）
+    iDetect     := SEL(GVL.bSimMode, GVL.iDetect,  fbDemo.bDetect),
+    iColorCode  := SEL(GVL.bSimMode, GVL.iColorCode, fbDemo.iColor),
     bRunning    := fbBelt.bRunning,  // 读取传送带运行状态
     bAlarmReset := GVL.bAlarmReset,  // 无IO绑定，HMI操作，报警复位信号
     bCntReset   := GVL.bCntReset     // 无IO绑定，HMI操作，计数复位信号
@@ -299,6 +369,12 @@ GVL.wCountRed   := fbSort.wCountRed;   // 红色计数
 GVL.wCountBlue  := fbSort.wCountBlue;  // 蓝色计数
 GVL.wCountGreen := fbSort.wCountGreen; // 绿色计数
 GVL.wCountTotal := fbSort.wCountTotal; // 总计数
+
+// 计数 → Modbus TCP 输入寄存器（上位机读）
+GVL.mbCountTotal := fbSort.wCountTotal;
+GVL.mbCountRed   := fbSort.wCountRed;
+GVL.mbCountBlue  := fbSort.wCountBlue;
+GVL.mbCountGreen := fbSort.wCountGreen;
 ```
 
 ---

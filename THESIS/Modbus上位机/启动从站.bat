@@ -1,17 +1,17 @@
 @echo off
 chcp 65001 >nul
-title Modbus Slave Simulator
+title 模拟从站（测试用）
 cd /d "%~dp0"
 
-echo Clearing port 502 ...
+echo 正在清理 502 端口 ...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :502 ^| findstr LISTENING') do (
     taskkill /F /PID %%a >nul 2>&1
 )
 timeout /t 1 /nobreak >nul
 
 echo.
-echo Starting slave simulator (PLC) ...
-echo Press Ctrl+C or close this window to stop.
+echo 正在启动模拟从站（测试用）...
+echo 按 Ctrl+C 或直接关窗口停止。
 echo.
 python modbus_slave_simulator.py
 pause

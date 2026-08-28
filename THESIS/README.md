@@ -21,18 +21,28 @@
 
 ```
 THESIS/
-├── thesis.project          # CODESYS 工程文件（权威，含 HMI）
-├── thesis代码.md            # GVL/程序结构（与工程一致）
-├── thesis需求文档.md        # 需求 + 进阶版（物体跟踪/卡料超时/IO-Link 等 10 条）
-├── thesis调试文档.md        # 仿真/强制变量调试流程
-├── thesis框架思路.md        # 框架搭建思路
-├── thesis-HMI制作指示.md    # HMI 三页面制作步骤（变量映射/动画/按钮配置）
-├── thesis-HMI调试文档.md    # HMI 调试流程 + 监视列表最小配置 + FAQ 坑点
+├── thesis.project                       # CODESYS 工程文件（权威，含 HMI）
+├── thesis代码.md                         # GVL/程序结构（与工程一致）
+├── thesis需求文档.md                     # 需求 + 进阶版（物体跟踪/卡料超时/IO-Link 等 10 条）
+├── thesis调试文档.md                     # 仿真/强制变量调试流程
+├── thesis框架思路.md                     # 框架搭建思路
+├── thesis-HMI制作指示.md                 # HMI 三页面制作步骤（变量映射/动画/按钮配置）
+├── thesis-HMI调试文档.md                 # HMI 调试流程 + 监视列表最小配置 + FAQ 坑点
+├── thesis-ModbusTCP通信制作指示.md        # Modbus TCP 从站配置 + Python 主站指引
+├── thesis-ModbusTCP通信调试文档.md        # Modbus TCP 端到端调试步骤 + 脚本说明
+├── thesis-BOM物料清单.md                 # 传感器/气缸/PLC 等器件 BOM
+├── thesis-器件选型思路.md                 # 选型方法论与各器件选型依据
 └── hmi/
     ├── visu_main.png       # 主控页截图
     ├── visu_monitor.png    # 分拣监控页截图
     ├── visu_alarm.png      # 报警页截图
     └── hmi_demo.mp4        # HMI 操作演示录屏
+└── Modbus上位机/
+    ├── modbus_master.py            # Python 上位机主站
+    ├── modbus_slave_simulator.py   # 从站模拟器（测试用）
+    ├── 启动主站.bat                 # 启动主站
+    ├── 启动从站.bat                 # 启动模拟从站
+    └── 使用说明.md                 # 使用说明
 ```
 
 ## HMI 界面预览
@@ -84,5 +94,5 @@ THESIS/
 - ✅ 阶段一：PLC 基础指令（启保停/定时器/计数/比较/边沿检测/SET-RESET）
 - ✅ 阶段二：DFB 封装 + I/O 绑定 + 12 步序交通灯
 - ✅ 阶段三：Codesys 迁移 + 综合项目核心方案 + 调试 + HMI（本仓库）
-- ⬜ 阶段四：Modbus TCP 通信（未开始）
+- ✅ 阶段四：Modbus TCP 通信（制作指示 + 调试文档 + Python 主站/从站脚本已验证）
 - ⬜ 阶段五：电气图绘制

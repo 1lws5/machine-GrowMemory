@@ -52,21 +52,25 @@
 
 ## Modbus TCP 通信
 - **主站（Client）**：上位机 / HMI（主动发起读，查询 PLC 数据）
-- **从站（Server）**：Codesys PLC（被动响应，把计数/状态数据挂到保持寄存器）
-- **协议**：Modbus TCP，端口 502，从站地址 Unit ID = 1
-- **寄存器映射（Holding Register，功能码 03 读）**：
+- **主站（Client）**：上位机 / Python 脚本（主动发起读，查询 PLC 数据）
+- **从站（Server）**：Codesys PLC（被动响应，把计数数据挂到输入寄存器）
+- **协议**：Modbus TCP，端口 502
+- **从站设备**：ModbusTCP Server Device（通用 TCP 服务器，无 Unit ID）
+- **寄存器映射（Input Register，功能码 04 读）**：
 
-| 寄存器地址 | 偏移 | 映射变量 | 含义 |
-|-----------|------|----------|------|
-| 40001 | 0 | GVL.wCountTotal | 分拣总数 |
-| 40002 | 1 | GVL.wCountRed | 红色计数 |
-| 40003 | 2 | GVL.wCountBlue | 蓝色计数 |
-| 40004 | 3 | GVL.wCountGreen | 绿色计数 |
-| 40005 | 4 | GVL.wRunState | 运行状态（0=停 1=运行） |
+| Modbus 地址 | 偏移 | 映射变量 | 类型 | 含义 |
+|------------|------|----------|------|------|
+| 30001 | 0 | GVL.mbCountTotal | INT | 分拣总数 |
+| 30002 | 1 | GVL.mbCountRed | INT | 红色计数 |
+| 30003 | 2 | GVL.mbCountBlue | INT | 蓝色计数 |
+| 30004 | 3 | GVL.mbCountGreen | INT | 绿色计数 |
 
-> 说明：Holding Register 为 16 位字，每个 INT 变量占 1 个寄存器。
-> GVL 开了 qualified_only，映射时变量需带 GVL. 前缀。
-> wRunState 需在 GVL 中新增 INT 变量（程序运行时写入 0/1）。
+> 说明：
+> - Input Register 为 16 位字，每个 INT 变量占 1 个寄存器。
+> - 计数是 PLC 输出给上位机读，应放 **Input Register（%QW）**，主站用 **功能码 04**。
+> - GVL 用 `AT %QW` 声明映射变量（如 `mbCountTotal AT %QW0 : INT`），避免 I/O 映射与程序赋值冲突。
+> - GVL 开了 qualified_only，映射和程序中变量需带 `GVL.` 前缀。
+> - 运行状态寄存器已砍掉；若需运行状态，可后续新增 `wRunState` 并映射到 %QW4。
 
 ## 电气图
 - 主电路图：电机、接触器、热继电器
